@@ -18,12 +18,18 @@
 
 import os
 
-from tests.component import (ComponentTestBase)
+from tests.component import (ComponentTestBase,
+                             ComponentTestGitRepository)
+
+from tests.component.deb import DEB_TEST_DATA_DIR
 from tests.component.deb.fixtures import RepoFixtures
 
 from nose.tools import ok_, eq_
 
 from gbp.scripts.pq import main as pq
+from gbp.scripts.import_dsc import main as import_dsc
+
+from subprocess import check_output as run
 
 
 class TestPq(ComponentTestBase):
@@ -81,3 +87,67 @@ class TestPq(ComponentTestBase):
         with open(patch) as f:
             self.assertTrue('rename from' not in f.read())
             self.assertTrue('rename to' not in f.read())
+
+    @staticmethod
+    def _dsc_name(pkg, version, dir):
+        return os.path.join(DEB_TEST_DATA_DIR,
+                            dir,
+                            '%s_%s.dsc' % (pkg, version))
+
+    @staticmethod
+    def _get_head_author_subject():
+        output = run('git format-patch -1 --stdout --subject-prefix=', shell=True)
+        for line in output.split('\n'):
+            line = line.strip()
+            if not line:
+                # end of headers
+                break
+            if line.startswith('From:'):
+                author = line.replace('From:', '').strip()
+            elif line.startswith('Subject:'):
+                subject = line.replace('Subject:', ''). strip()
+        return author, subject
+
+    def test_import(self):
+        '''Test importing some patches'''
+
+        pkg = 'hello-debhelper'
+        dsc = self._dsc_name(pkg, '2.6-2', 'dsc-3.0')
+        assert import_dsc(['arg0', dsc]) == 0
+        repo = ComponentTestGitRepository(pkg)
+        os.chdir(pkg)
+        ret = pq(['arg0', 'import'])
+        ok_(ret == 0, 'Importing patches failed')
+
+        author, subject = self._get_head_author_subject()
+        assert (author == 'Santiago Vila <sanvila@debian.org>' and
+                subject == 'Modified doc/Makefile.in to avoid '
+                           '/usr/share/info/dir.gz')
+
+        pq(['arg0', 'switch'])
+
+        with open('debian/patches/series', 'a') as series_file:
+            series_file.write('foo.patch\n')
+
+        with open('debian/patches/foo.patch', 'w') as patch:
+            patch.write('''\
+Author: Mr. T. St <t@example.com>
+Description: Short DEP3 description
+ Long DEP3 description
+ .
+ Continued
+--- /dev/null
++++ b/foo
+@@ -0,0 +1 @@
++foo
+''')
+        repo.add_files('debian/patches/foo.patch')
+        repo.commit_files(msg='Add patch: foo.patch',
+                          files=['debian/patches/series',
+                                 'debian/patches/foo.patch'])
+        ret = pq(['arg0', 'import', '--force'])
+        ok_(ret == 0, 'Importing foo.patch failed')
+
+        author, subject = self._get_head_author_subject()
+        assert (author == '"Mr. T. St" <t@example.com>' and
+                subject == 'Short DEP3 description')
