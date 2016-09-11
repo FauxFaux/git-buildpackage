@@ -19,11 +19,14 @@
 import os
 
 from tests.component import (ComponentTestBase)
+
+from tests.component.deb import DEB_TEST_DATA_DIR
 from tests.component.deb.fixtures import RepoFixtures
 
 from nose.tools import ok_, eq_
 
 from gbp.scripts.pq import main as pq
+from gbp.scripts.import_dsc import main as import_dsc
 
 
 class TestPq(ComponentTestBase):
@@ -81,3 +84,48 @@ class TestPq(ComponentTestBase):
         with open(patch) as f:
             self.assertTrue('rename from' not in f.read())
             self.assertTrue('rename to' not in f.read())
+
+    @staticmethod
+    def _dsc_name(pkg, version, dir):
+        return os.path.join(DEB_TEST_DATA_DIR,
+                            dir,
+                            '%s_%s.dsc' % (pkg, version))
+
+    @RepoFixtures.quilt30()
+    def test_import(self, repo):
+        pkg = 'hello-debhelper'
+        dsc = self._dsc_name(pkg, '2.6-2', 'dsc-3.0')
+        eq_(import_dsc(['arg0', dsc]), 0)
+        self._test_pq(repo, 'import')
+
+        author, subject = repo.get_head_author_subject()
+        eq_(author, 'Santiago Vila <sanvila@debian.org>')
+        eq_(subject, 'Modified doc/Makefile.in to avoid '
+                     '/usr/share/info/dir.gz')
+
+        self._test_pq(repo, 'switch')
+
+        with open(os.path.join(repo.path, 'debian/patches/series'), 'a') as series_file:
+            series_file.write('foo.patch\n')
+
+        with open(os.path.join(repo.path, 'debian/patches/foo.patch'), 'w') as patch:
+            patch.write('''\
+Author: Mr. T. St <t@example.com>
+Description: Short DEP3 description
+ Long DEP3 description
+ .
+ Continued
+--- /dev/null
++++ b/foo
+@@ -0,0 +1 @@
++foo
+''')
+        repo.add_files('debian/patches/foo.patch')
+        repo.commit_files(msg='Add patch: foo.patch',
+                          files=['debian/patches/series',
+                                 'debian/patches/foo.patch'])
+        self._test_pq(repo, 'import', ['--force'])
+
+        author, subject = repo.get_head_author_subject()
+        eq_(subject, 'Short DEP3 description')
+        eq_(author, '"Mr. T. St" <t@example.com>')
