@@ -23,6 +23,8 @@ import subprocess
 import tempfile
 from gbp.errors import GbpError
 
+VALID_DEP3_ENDS = re.compile(r'(?:---|\*\*\*|Index:)[ \t][^ \t]|^diff -|^---')
+
 
 class Patch(object):
     """
@@ -146,25 +148,23 @@ class Patch(object):
         # patch_header logic from quilt plus any line starting with ---
         # which is the dep3 stop processing and the git separation between the
         # header and diff stat
-        pipe = subprocess.Popen('''
-        awk '
-        /^(---|\*\*\*|Index:)[ \t][^ \t]|^diff -|^---/ \
-                { exit }
-                { print }
-        ' '%s' ''' % self.path, shell=True, stdout=subprocess.PIPE).stdout
         headers = collections.OrderedDict()
         current = 'long_desc'
-        for line in pipe:
-            if line.startswith(' '):
-                # continuation
-                headers.setdefault(current, list()).append(line)
-            elif ':' in line:
-                current = line.split(':', 1)[0].lower()
-                headers.setdefault(current, list()).append(line)
-            else:
-                # end of paragraph or not a header, read_info already left
-                # everything else in the long_desc, nothing else to do
-                break
+        with open(self.path) as file:
+            for line in file:
+                if VALID_DEP3_ENDS.search(line):
+                    break
+
+                if line.startswith(' '):
+                    # continuation
+                    headers.setdefault(current, list()).append(line)
+                elif ':' in line:
+                    current = line.split(':', 1)[0].lower()
+                    headers.setdefault(current, list()).append(line)
+                else:
+                    # end of paragraph or not a header, read_info already left
+                    # everything else in the long_desc, nothing else to do
+                    break
         self._dep3_to_info(headers)
 
     def _get_subject_from_filename(self):
