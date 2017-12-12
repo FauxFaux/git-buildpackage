@@ -211,7 +211,7 @@ class Patch(object):
         @param key: key to fetch
         @type key: C{str}
         @param get_val: alternate value if key is not in info dict
-        @type get_val: C{str}
+        @type get_val: C{()->str}
         """
         if self.info is None:
             self._read_info()
