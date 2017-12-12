@@ -59,6 +59,9 @@ class Patch(object):
         return repr
 
     def _read_info(self):
+        self._read_gbp_format_info()
+
+    def _read_gbp_format_info(self):
         """
         Read patch information into a structured form
 
@@ -85,6 +88,89 @@ class Patch(object):
             body.close()
             if os.path.exists(body.name):
                 os.unlink(body.name)
+
+    def _get_subject_from_filename(self):
+        """
+        Determine the patch's subject based on the its filename
+
+        >>> p = Patch('debian/patches/foo.patch')
+        >>> p._get_subject_from_filename()
+        'foo'
+        >>> Patch('foo.patch')._get_subject_from_filename()
+        'foo'
+        >>> Patch('debian/patches/foo.bar')._get_subject_from_filename()
+        'foo.bar'
+        >>> p = Patch('debian/patches/foo')
+        >>> p._get_subject_from_filename()
+        'foo'
+        >>> Patch('0123-foo.patch')._get_subject_from_filename()
+        'foo'
+        >>> Patch('0123.patch')._get_subject_from_filename()
+        '0123'
+        >>> Patch('0123-foo-0123.patch')._get_subject_from_filename()
+        'foo-0123'
+
+        @return: the patch's subject
+        @rtype: C{str}
+        """
+        subject = os.path.basename(self.path)
+        # Strip of .diff or .patch from patch name
+        try:
+            base, ext = subject.rsplit('.', 1)
+            if ext in self.patch_exts:
+                subject = base
+        except ValueError:
+                pass  # No ext so keep subject as is
+        return subject.lstrip('0123456789-') or subject
+
+    def _get_info_field(self, key, get_val=None):
+        """
+        Return the key I{key} from the info C{dict}
+        or use val if I{key} is not a valid key.
+
+        Fill self.info if not already done.
+
+        @param key: key to fetch
+        @type key: C{str}
+        @param get_val: alternate value if key is not in info dict
+        @type get_val: C{()->str}
+        """
+        if self.info is None:
+            self._read_info()
+
+        if key in self.info:
+            return self.info[key]
+        else:
+            return get_val() if get_val else None
+
+    @property
+    def subject(self):
+        """
+        The patch's subject, either from the patch header or from the filename.
+        """
+        return self._get_info_field('subject', self._get_subject_from_filename)
+
+    @property
+    def author(self):
+        """The patch's author"""
+        return self._get_info_field('author')
+
+    @property
+    def email(self):
+        """The patch author's email address"""
+        return self._get_info_field('email')
+
+    @property
+    def date(self):
+        """The patch's modification time"""
+        return self._get_info_field('date')
+
+
+class Dep3Patch(Patch):
+    def _read_info(self):
+        self._read_gbp_format_info()
+        if not self.info:
+            self._check_dep3()
 
     def _dep3_get_value(self, lines):
         value = []
@@ -166,84 +252,6 @@ class Patch(object):
                     # everything else in the long_desc, nothing else to do
                     break
         self._dep3_to_info(headers)
-
-    def _get_subject_from_filename(self):
-        """
-        Determine the patch's subject based on the its filename
-
-        >>> p = Patch('debian/patches/foo.patch')
-        >>> p._get_subject_from_filename()
-        'foo'
-        >>> Patch('foo.patch')._get_subject_from_filename()
-        'foo'
-        >>> Patch('debian/patches/foo.bar')._get_subject_from_filename()
-        'foo.bar'
-        >>> p = Patch('debian/patches/foo')
-        >>> p._get_subject_from_filename()
-        'foo'
-        >>> Patch('0123-foo.patch')._get_subject_from_filename()
-        'foo'
-        >>> Patch('0123.patch')._get_subject_from_filename()
-        '0123'
-        >>> Patch('0123-foo-0123.patch')._get_subject_from_filename()
-        'foo-0123'
-
-        @return: the patch's subject
-        @rtype: C{str}
-        """
-        subject = os.path.basename(self.path)
-        # Strip of .diff or .patch from patch name
-        try:
-            base, ext = subject.rsplit('.', 1)
-            if ext in self.patch_exts:
-                subject = base
-        except ValueError:
-                pass  # No ext so keep subject as is
-        return subject.lstrip('0123456789-') or subject
-
-    def _get_info_field(self, key, get_val=None):
-        """
-        Return the key I{key} from the info C{dict}
-        or use val if I{key} is not a valid key.
-
-        Fill self.info if not already done.
-
-        @param key: key to fetch
-        @type key: C{str}
-        @param get_val: alternate value if key is not in info dict
-        @type get_val: C{()->str}
-        """
-        if self.info is None:
-            self._read_info()
-        if not self.info:
-            self._check_dep3()
-
-        if key in self.info:
-            return self.info[key]
-        else:
-            return get_val() if get_val else None
-
-    @property
-    def subject(self):
-        """
-        The patch's subject, either from the patch header or from the filename.
-        """
-        return self._get_info_field('subject', self._get_subject_from_filename)
-
-    @property
-    def author(self):
-        """The patch's author"""
-        return self._get_info_field('author')
-
-    @property
-    def email(self):
-        """The patch author's email address"""
-        return self._get_info_field('email')
-
-    @property
-    def date(self):
-        """The patch's modification time"""
-        return self._get_info_field('date')
 
 
 class PatchSeries(list):
@@ -367,4 +375,4 @@ class PatchSeries(list):
         line = cls._strip_comment(line.rstrip())
         topic = cls._get_topic(line)
         (patch, split) = cls._split_strip(line)
-        return Patch(os.path.join(patch_dir, patch), topic, split)
+        return Dep3Patch(os.path.join(patch_dir, patch), topic, split)
