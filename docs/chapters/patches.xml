@@ -52,6 +52,15 @@
     the your &debian-branch;, of course.
   </para>
 
+  <para>
+    Also, beware that &gbp-pq; currently has incomplete support for
+    <ulink url="http://dep.debian.net/deps/dep3/">DEP3</ulink> headers,
+    such as <computeroutput>Origin</computeroutput> and
+    <computeroutput>Forwarded</computeroutput>. These will be replaced
+    with <command>git-format-patch(1)</command> compatible options during
+    export.
+  </para>
+
   <sect1 id="gbp.patches.workflow">
     <title>Basic Workflow</title>
 
