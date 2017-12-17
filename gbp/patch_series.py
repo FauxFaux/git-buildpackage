@@ -59,9 +59,9 @@ class Patch(object):
         return repr
 
     def _read_info(self):
-        self._read_gbp_format_info()
+        self._read_git_mailinfo()
 
-    def _read_gbp_format_info(self):
+    def _read_git_mailinfo(self):
         """
         Read patch information into a structured form
 
@@ -168,7 +168,7 @@ class Patch(object):
 
 class Dep3Patch(Patch):
     def _read_info(self):
-        self._read_gbp_format_info()
+        self._read_git_mailinfo()
         if not self.info:
             self._check_dep3()
 
