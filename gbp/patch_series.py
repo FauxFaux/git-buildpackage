@@ -309,28 +309,6 @@ class Dep3Patch(Patch):
         else:
             return get_val() if get_val else None
 
-    @property
-    def subject(self):
-        """
-        The patch's subject, either from the patch header or from the filename.
-        """
-        return self._get_info_field('subject', self._get_subject_from_filename)
-
-    @property
-    def author(self):
-        """The patch's author"""
-        return self._get_info_field('author')
-
-    @property
-    def email(self):
-        """The patch author's email address"""
-        return self._get_info_field('email')
-
-    @property
-    def date(self):
-        """The patch's modification time"""
-        return self._get_info_field('date')
-
 
 class PatchSeries(list):
     """
