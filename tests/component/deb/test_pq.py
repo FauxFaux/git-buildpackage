@@ -91,6 +91,19 @@ class TestPq(ComponentTestBase):
                             dir,
                             '%s_%s.dsc' % (pkg, version))
 
+    @staticmethod
+    def _append_patch(repo, name, contents):
+        with open(os.path.join(repo.path, 'debian/patches/series'), 'a') as series_file:
+            series_file.write('{}.patch\n'.format(name))
+
+        with open(os.path.join(repo.path, 'debian/patches/{}.patch'.format(name)), 'w') as patch:
+            patch.write(contents)
+
+        repo.add_files('debian/patches/{}.patch'.format(name))
+        repo.commit_files(msg='Add patch: {}.patch'.format(name),
+                          files=['debian/patches/series',
+                                 'debian/patches/{}.patch'.format(name)])
+
     @RepoFixtures.quilt30()
     def test_import(self, repo):
         pkg = 'hello-debhelper'
@@ -105,11 +118,7 @@ class TestPq(ComponentTestBase):
 
         self._test_pq(repo, 'switch')
 
-        with open(os.path.join(repo.path, 'debian/patches/series'), 'a') as series_file:
-            series_file.write('foo.patch\n')
-
-        with open(os.path.join(repo.path, 'debian/patches/foo.patch'), 'w') as patch:
-            patch.write('''\
+        self._append_patch(repo, 'foo', '''\
 Author: Mr. T. St <t@example.com>
 Description: Short DEP3 description
  Long DEP3 description
@@ -120,12 +129,60 @@ Description: Short DEP3 description
 @@ -0,0 +1 @@
 +foo
 ''')
-        repo.add_files('debian/patches/foo.patch')
-        repo.commit_files(msg='Add patch: foo.patch',
-                          files=['debian/patches/series',
-                                 'debian/patches/foo.patch'])
         self._test_pq(repo, 'import', ['--force'])
 
         author, subject = repo.get_head_author_subject()
         eq_(subject, 'Short DEP3 description')
         eq_(author, '"Mr. T. St" <t@example.com>')
+
+    @RepoFixtures.quilt30()
+    def test_import_poor_dep3_behaviour(self, repo):
+        """Demonstrate the issues with the current DEP3 support"""
+
+        pkg = 'hello-debhelper'
+        dsc = self._dsc_name(pkg, '2.6-2', 'dsc-3.0')
+        eq_(import_dsc(['arg0', dsc]), 0)
+
+        self._append_patch(repo, 'foo', '''\
+Author: Mr. T. St <t@example.com>
+Description: A very long description with wrapp-
+  ing to increase readability in the file, which
+  is currently split into a short and long description.
+Origin: https://twitter.com/MrT/status/941789967361097728
+Forwarded: not-needed
+--- /dev/null
++++ b/foo
+@@ -0,0 +1 @@
++foo
+''')
+        self._test_pq(repo, 'import', ['--force'])
+
+        _, subject = repo.get_head_author_subject()
+        eq_(subject, 'A very long description with wrapp-')
+
+        self._test_pq(repo, 'export')
+
+        relevant_parts_of_patch = ''
+        with open('debian/patches/foo.patch') as patch_file:
+            for line in patch_file:
+                # skip the date as it's currently set to now(),
+                # not a deterministic value
+                if line.startswith('Date: '):
+                    continue
+
+                # stop reading after the main part of the description;
+                # i.e. ignore the bit that git(1) fully controls.
+                if line.startswith('---'):
+                    break
+
+                relevant_parts_of_patch += line
+
+        eq_(relevant_parts_of_patch, '''\
+From: "Mr. T. St" <t@example.com>
+Subject: A very long description with wrapp-
+
+ ing to increase readability in the file, which
+ is currently split into a short and long description.
+Origin: https://twitter.com/MrT/status/941789967361097728
+Forwarded: not-needed
+''')
